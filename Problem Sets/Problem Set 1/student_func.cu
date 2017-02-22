@@ -32,6 +32,7 @@
 //so that the entire image is processed.
 
 #include "utils.h"
+#include <math.h>
 
 __global__
 void rgba_to_greyscale(const uchar4* const rgbaImage,
@@ -50,6 +51,22 @@ void rgba_to_greyscale(const uchar4* const rgbaImage,
   //First create a mapping from the 2D block and grid locations
   //to an absolute 2D location in the image, then use that to
   //calculate a 1D offset
+
+  // uint3 gridDim：網格大小     (網格包含的區塊數目)
+  // uint3 blockIdx：區塊索引    (區塊的ID)
+  // uint3 blockDim：區塊大小    (每個區塊包含的執行緒數目)
+  // uint3 threadIdx：執行緒索引 (執行緒的ID)
+
+  int x = blockIdx.x*blockDim.x + threadIdx.x;
+  int y = blockIdx.y*blockDim.y + threadIdx.y;
+
+  int idx = numRows*y + x;
+
+  float R = rgbaImage[idx].x;
+  float G = rgbaImage[idx].y;
+  float B = rgbaImage[idx].z;
+  greyImage[idx] = .299f * R + .587f * G + .114f * B;
+
 }
 
 void your_rgba_to_greyscale(const uchar4 * const h_rgbaImage, uchar4 * const d_rgbaImage,
@@ -57,10 +74,17 @@ void your_rgba_to_greyscale(const uchar4 * const h_rgbaImage, uchar4 * const d_r
 {
   //You must fill in the correct sizes for the blockSize and gridSize
   //currently only one block with one thread is being launched
-  const dim3 blockSize(1, 1, 1);  //TODO
-  const dim3 gridSize( 1, 1, 1);  //TODO
+
+  int blockWidth = 10; // thread size per block: blockWidth*blockWidth
+  const dim3 blockSize(blockWidth, blockWidth, 1);  //TODO
+
+  // how many blocks
+  int blocksX = ceil( float(numRows)/blockWidth );
+  int blocksY = ceil( float(numCols)/blockWidth );
+  const dim3 gridSize( blocksX, blocksY, 1);  //TODO
+
+  // call kernel
   rgba_to_greyscale<<<gridSize, blockSize>>>(d_rgbaImage, d_greyImage, numRows, numCols);
   
   cudaDeviceSynchronize(); checkCudaErrors(cudaGetLastError());
-
 }
