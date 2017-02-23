@@ -7,6 +7,12 @@
 
 # collect source files
 
+cmake_minimum_required(VERSION 2.8)
+
+find_package(CUDA REQUIRED)
+find_package(OpenCV REQUIRED)
+INCLUDE(FindCUDA)
+
 file( GLOB  hdr *.hpp *.h )
 file( GLOB  cu  *.cu)
 SET (HW1_files main.cpp reference_calc.cpp compare.cpp)

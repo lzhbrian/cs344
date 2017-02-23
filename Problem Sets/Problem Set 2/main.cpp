@@ -10,7 +10,7 @@
 #include "compare.h"
 
 //include the definitions of the above functions for this homework
-#include "HW1.cpp"
+#include "HW2.cpp"
 
 
 /*******  DEFINED IN student_func.cu *********/
