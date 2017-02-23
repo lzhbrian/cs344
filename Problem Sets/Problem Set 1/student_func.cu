@@ -60,7 +60,7 @@ void rgba_to_greyscale(const uchar4* const rgbaImage,
   int x = blockIdx.x*blockDim.x + threadIdx.x;
   int y = blockIdx.y*blockDim.y + threadIdx.y;
 
-  int idx = numRows*y + x;
+  int idx = numCols*y + x;
 
   float R = rgbaImage[idx].x;
   float G = rgbaImage[idx].y;
@@ -79,8 +79,8 @@ void your_rgba_to_greyscale(const uchar4 * const h_rgbaImage, uchar4 * const d_r
   const dim3 blockSize(blockWidth, blockWidth, 1);  //TODO
 
   // how many blocks
-  int blocksX = ceil( float(numRows)/blockWidth );
-  int blocksY = ceil( float(numCols)/blockWidth );
+  int blocksX = ceil( float(numCols)/blockWidth );
+  int blocksY = ceil( float(numRows)/blockWidth );
   const dim3 gridSize( blocksX, blocksY, 1);  //TODO
 
   // call kernel
