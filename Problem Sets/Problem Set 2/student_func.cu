@@ -101,6 +101,7 @@
 //****************************************************************************
 
 #include "utils.h"
+#include <stdio.h>
 
 __global__
 void gaussian_blur(const unsigned char* const inputChannel,
@@ -126,7 +127,7 @@ void gaussian_blur(const unsigned char* const inputChannel,
   // get x, y, index
   int x = blockIdx.x*blockDim.x + threadIdx.x;
   int y = blockIdx.y*blockDim.y + threadIdx.y;
-  int idx = numRows*y + x;
+  int idx = numCols*y + x;
 
   // check if its in bounds
   if ( x >= numCols ||
@@ -140,10 +141,10 @@ void gaussian_blur(const unsigned char* const inputChannel,
   float cur_filter_val = 0.0f;
   for (int r = -filterWidth/2; r <= filterWidth/2; ++r) {
     for (int c = -filterWidth/2; c <= filterWidth/2; ++c) {
-      int cur_x = x + c;
-      int cur_y = y + r;
-      if ( cur_x >= numCols || cur_y >= numRows || cur_x < 0 || cur_y < 0) continue;
-      int cur_idx = numRows*cur_y + cur_x;
+      int cur_x = min( max(x + c,0), numCols-1 );
+      int cur_y = min( max(y + r,0), numRows-1 );
+
+      int cur_idx = numCols*cur_y + cur_x;
       cur_channel_val = static_cast<float>(inputChannel[cur_idx]);
       cur_filter_val = filter[(r + filterWidth/2) * filterWidth + c + filterWidth/2];
       sum += cur_filter_val * cur_channel_val;
