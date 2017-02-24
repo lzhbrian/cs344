@@ -80,6 +80,94 @@
 */
 
 #include "utils.h"
+#include <stdlib.h>
+
+
+__global__
+void calc_min_or_max(float* d_min_or_max, 
+              float* d_data, 
+              unsigned int size,
+              int minmax)
+{
+  unsigned int tid = threadIdx.x + blockDim.x*blockIdx.x;
+  for(unsigned int s = size/2; s > 0; s /= 2) {
+      if(tid < s) {
+          if(minmax == 0) {
+              d_data[tid] = min(d_data[tid], d_data[tid+s]);
+          } else {
+              d_data[tid] = max(d_data[tid], d_data[tid+s]);
+          }
+      }
+      __syncthreads();
+  }
+  if(tid==0){
+    *d_min_or_max = d_data[0];
+  }
+}
+
+
+
+float get_min_or_max(const float* const d_logLuminance, 
+                      size_t numRows,
+                      size_t numCols,
+                      size_t max_or_min)
+{
+  unsigned int photoSize = numRows*numCols;
+
+  // ans
+  float* d_min_or_max;
+  cudaMalloc((void**)&d_min_or_max, sizeof(float));
+  cudaMemset(d_min_or_max, 0, sizeof(float));
+
+  float* d_data;
+  cudaMalloc((void**)&d_data, photoSize*sizeof(float));
+  cudaMemcpy(d_data, d_logLuminance, photoSize*sizeof(float), cudaMemcpyDeviceToDevice);
+
+  unsigned int blockNum = 1024;
+  unsigned int blockSize = (int)ceil( (float)photoSize/(float)blockNum );
+  calc_min_or_max<<<blockNum, blockSize>>>(d_min_or_max, d_data, photoSize, max_or_min);
+
+  cudaDeviceSynchronize(); checkCudaErrors(cudaGetLastError());  
+
+  float h_min_or_max;
+  cudaMemcpy(&h_min_or_max, d_min_or_max, sizeof(float), cudaMemcpyDeviceToHost);
+  return h_min_or_max;
+
+}
+
+
+
+__global__
+void histogram_kernel(unsigned int* d_histo, const float* d_logLuminance, const int numBins, const float min_logLum, const float max_logLum, const int photoSize) {
+
+  int index = threadIdx.x + blockDim.x * blockIdx.x;
+  float lumRange = max_logLum - min_logLum;
+  int binIdx = (d_logLuminance[index] - min_logLum) / lumRange * numBins;
+  atomicAdd(&d_histo[binIdx], 1);
+
+}
+
+__global__
+void hillis_steele_exclusive_scan(unsigned int* d_pdf, unsigned int* d_histo, const size_t numBins)
+{
+  int tid = threadIdx.x;
+  // use left shift '<<' to multiply by 2 each iteration
+  for (unsigned int s = 1; s < numBins; s <<= 1) {
+    int left_neighborid = tid - s;
+    if (left_neighborid >= 0)
+      d_histo[tid] = d_histo[tid] + d_histo[left_neighborid];
+    __syncthreads();
+  }
+
+  // convert the above inclusive scan to an exclusive one
+  
+  if (tid == 0) {
+    d_pdf[tid] = 0;
+  } else {
+    d_pdf[tid] = d_histo[tid-1];
+  }
+}
+
 
 void your_histogram_and_prefixsum(const float* const d_logLuminance,
                                   unsigned int* const d_cdf,
@@ -89,6 +177,32 @@ void your_histogram_and_prefixsum(const float* const d_logLuminance,
                                   const size_t numCols,
                                   const size_t numBins)
 {
+  int threadPerBlock, blockNum;
+  int photoSize = numRows*numCols;
+
+  min_logLum = get_min_or_max(d_logLuminance, numRows, numCols, 0);
+  max_logLum = get_min_or_max(d_logLuminance, numRows, numCols, 1);
+
+
+  // init d_histo
+  unsigned int* d_histo;
+  cudaMalloc((void**)&d_histo, sizeof(unsigned int)*numBins);
+  cudaMemset(d_histo, 0, sizeof(unsigned int)*numBins);
+  // Calc d_histo
+  threadPerBlock = 1024;
+  blockNum = (int)ceil( (float)photoSize/(float)threadPerBlock );
+  histogram_kernel<<<blockNum, threadPerBlock>>>(d_histo, d_logLuminance, numBins, min_logLum, max_logLum, photoSize);
+  cudaDeviceSynchronize(); checkCudaErrors(cudaGetLastError());
+
+
+  // hillis_steele exclusive Scan to calc cdf
+  hillis_steele_exclusive_scan<<<1, numBins>>>(d_cdf, d_histo, numBins);
+  cudaDeviceSynchronize(); checkCudaErrors(cudaGetLastError());
+
+
+  // Free mem
+  cudaFree(d_histo);
+
   //TODO
   /*Here are the steps you need to implement
     1) find the minimum and maximum value in the input logLuminance channel
@@ -99,6 +213,9 @@ void your_histogram_and_prefixsum(const float* const d_logLuminance,
     4) Perform an exclusive scan (prefix sum) on the histogram to get
        the cumulative distribution of luminance values (this should go in the
        incoming d_cdf pointer which already has been allocated for you)       */
-
-
 }
+
+
+
+
+

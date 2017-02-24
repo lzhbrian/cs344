@@ -1,8 +1,6 @@
-
+[TOC]
 
 ## Lesson 2 GPU Hardware and Parallel Communication Patterns
-
-[TOC]
 
 ### Parallel communication patterns
 
@@ -39,7 +37,7 @@ __Note__: Difference between __Stencil__ and __Gather__: __Stencil__ require tas
    - Use faster memories: __local__ > __shared__ > __global__ > __host__
 2. Avoid __thread divergence__
    -  `if, else`
-   - loop different times
+   -  loop different times
 
 ### Memory Model
 
@@ -145,6 +143,63 @@ __global__ void increment_atomic(int *g){
     a = array[index];
   }
   ```
+
+
+
+
+
+
+## Lesson 3 Fundamental GPU Algorithms
+
+### Fundamental GPU Algorithms
+
+* Reduce
+* Scan
+* Histogram
+
+### Step and Work
+
+* Step Complexity
+* Work Complexity
+
+![worknstep](source/worknstep.png)
+
+![work_step](source/work_step.png)
+
+
+
+
+
+* Algorithms
+
+| Algorithm     | Scan type      | Work E | Step E |
+| ------------- | -------------- | ------ | ------ |
+| Serial        |                | n^2    | logn   |
+| Hillis/Steele | inclusive scan | nlogn  | logn   |
+| Blelloch      | exclusive scan | 2n     | 2*logn |
+
+![H_S](source/H_S.png)
+
+![belle](source/belle.png)
+
+![belle2](source/belle2.png)
+
+### Histogram
+
+1. Accumulate using __atomics__
+2. ​
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
