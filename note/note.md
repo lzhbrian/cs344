@@ -340,7 +340,7 @@ __global__ void simple_histo(int *d_bins, const int *d_in, const int BIN_COUNT)
 
   ![compact](source/compact.png)
 
-​	![compact_then_compute](source/compact_then_compute.png)
+  ​![compact_then_compute](source/compact_then_compute.png)
 
 #### Steps to Compact
 
@@ -506,7 +506,301 @@ __global__ void simple_histo(int *d_bins, const int *d_in, const int BIN_COUNT)
   * Move the key-value as a unit
     * 64 bits = 32-bits-key + 32-bits-value
 
- 
+
+
+## Lesson 5 Optimizing GPU programming
+
+### Some concepts
+
+#### Levels of Optimaization
+
+1. Picking good algorithms
+
+2. Basic principls for efficiency
+
+3. Architecture-specific detailed optimization
+
+4. Micro-optimization (Instruction Level)
+
+   ![opt](source/opt.png)
+
+#### GPU Optimization method
+
+1. Fundamentally parallel
+
+2. Memory opt
+
+   1. Coalescingglobal memory
+   2. use shared memory
+
+3. Arch
+
+   1. bank conflicts
+   2. optmizing registers
+
+4. Micro-opt
+
+   1. floating-point
+   2. denorm hacks
+
+   ![gpu_opt](source/gpu_opt.png)
+
+#### Principals of effiecient GPU programming
+
+1. Maximize arithmetic intensity
+2. Decrease time spent on memory operations
+3. Coalesce global memory accesses
+4. Avoid thread divergence
+
+### APOD - Systematic Optimization - a cycle
+
+* __Analyze__: Profile whole application
+* __Parallelize__: Pick an approach, pick an algorithm
+* __Optimize__: Profile-driven optimization
+* __Deploy__: Don't optimize in a vacuum
+
+
+
+### Optimizing Memory Operations
+
+#### Bandwidth
+
+##### Theoretical v.s. Real
+
+* 40-60%: Okay
+* 60-75%: Good
+* \>75%: Excellent
+
+![bandwidth](source/bandwidth.png)
+
+
+
+#### Analyze
+
+##### Understand Hotspots
+
+* Don't rely on intuition, run a profiler
+   1. gprof
+   2. vtune
+   3. verySleepy
+* Amdahl's Law
+   * Total speedup from paralelization is limited by portion of time spent doing some thing to be parallelized
+* Parallelize
+
+
+##### Understanding Strong scaling v.s. Weak Scaling
+
+- __Weak scaling__: means that the size of the problem does not highly correlated to the run time
+  - Strategy: run a larger problem
+- __Strong Scaling__: means that the larger the problem is, more time is required
+  - Strategy: run a problem faster
+
+
+
+#### NVVP to Profile our Run
+
+##### Solving write global not coalescing issue
+
+```cpp
+__global__ void 
+transpose_parallel_per_element_tiled(float in[], float out[])
+{
+	// TODO
+	// (i,j) locations of the tile corners for input & output matrices:
+	int in_corner_i  = blockIdx.x * K;
+	int in_corner_j  = blockIdx.y * K;
+	int out_corner_i = blockIdx.y * K;
+	int out_corner_j = blockIdx.x * K;
+
+	
+	int x = threadIdx.x;
+	int y = threadIdx.y;
+
+
+	__shared__ float tile[K][K];
+
+
+	// coalesced read from global mem, TRANSPOSED write into shared mem:
+	tile[y][x] = in[(in_corner_i + x) + (in_corner_j + y)*N];
+	__syncthreads();
+	
+	
+	// read from shared mem, coalesced write to global mem:
+	out[(out_corner_i + x) + (out_corner_j + y)*N] = tile[x][y];
+}
+```
+
+#### Little's Law
+
+\# of Bytes delivered = Average Latency of Each Transaction * bandwidth 
+
+
+
+#### Occupancy
+
+##### Definition
+
+* Occupancy = Threads running / Max threads possible
+
+
+* Each SM has a limited number of:
+  * thread blocks
+  * threads
+  * registers
+  * bytes of shared memory
+
+![occupancy](source/occupancy.png)
+
+![device_query](source/device_query.png)
+
+![occ_rate](source/occ_rate.png)
+
+##### How to affect occupancy
+
+1. Control amount of shared memory (e.g. tile size)
+2. Change \# of threads, blocks (<<<,>>>)
+3. Compilation options to control register usage
+
+* Note: Increasing occupancy usually helps, but only to a point
+  * __Pros__: Exposes more parallelism, transactions in flight
+  * __Cons__: May force GPU to run less efficiently
+
+
+
+
+
+### Optimizing Compute Performance
+
+* Goal: Maximiaze useful computation per second
+  * Minimize time waiting at barriers (See above)
+  * Minimize thread divergence
+
+#### Minimizing thread divergence
+
+* __Warp__: a set of threads that execute the same instruction at a time
+
+  * 32 threads per warp
+
+* __SIMD__: Single Instruction, Multiple Data
+
+  * On CPU: SSE/AVX (vector registers)
+
+* __SIMT__: Single Instruction, Multiple Thread
+
+* __Thread Divergence__
+
+  * only 32 threads in a warp, so the max penalty for a CUDA thread divergence is 32x slowdown. (When all threads in a warp diverge)
+
+  ![diverge](source/diverge.png)
+
+![divergence_expample](source/divergence_expample.png)
+
+![divergence_example2](source/divergence_example2.png)
+
+![div_example3](source/div_example3.png)
+
+* Reducing branch divergence
+  * Avoid branchy code
+  * Beware large imbalance in thread workloads
+
+
+
+#### Assorted Math Optimizations
+
+* Use double precision only when you mean it
+
+  * ```cpp
+    3.14 != 3.14f
+    ```
+
+* use __intrinsics__ when possible
+
+  * ```cpp
+    __sin(), __cos(), ...
+    ```
+
+![comp](source/comp.png)
+
+
+
+### Host-GPU Interaction
+
+* ```cpp
+  cudaHostMalloc()
+  ```
+
+* ```cpp
+  cudaHostRegister()
+  ```
+
+
+
+![hostgpu](source/hostgpu.png)
+
+
+
+#### Streams
+
+```cpp
+cudaStream_t s1;
+cudaStreamCreate(&s1);
+cudaStreamDestroy(s1);
+cudaMemcpyAsync()
+```
+
+![stream](source/stream.png)
+
+![stream2](source/stream2.png)
+
+* If we want to process some very big data, we can make the data transfer process do when the GPU is also computing.
+
+![async](source/async.png)
+
+#### Advantages of Streams
+
+1. Overlap memory & Compute
+2. Help fill GPU with small kernels
+   1. Many problems with limited parallelism
+   2. Computations with narrow phases (reduce)
+
+#### More
+
+1. Check CUDA programming Guide
+   1. Streams
+   2. Events
+
+
+
+## Lesson 6 Parallel Computing Patterns
+
+### N-Body Problem
+
+* Complecity: n^2
+* ​
+
+
+
+
+
+
+
+
+
+
+
+
+
+## Lesson 7 Additional Parallel Computing Topics and Dynamic Parallelism
+
+
+
+
+
+
+
+
+
+
 
 
 
